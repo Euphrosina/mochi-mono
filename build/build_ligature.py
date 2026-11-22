@@ -251,6 +251,195 @@ def build_ligatures(metrics):
 
 
 # --------------------------------------------------------------------------
+# the rest of the ligature set, generated from a tiny drawing language:
+#   '-' '=' '~'   horizontal line / double line / wave (runs are joined)
+#   '<' '>'       arrow-head chevrons; a line connects to the chevron's tip
+#   '|'           vertical bar (only when the sequence also has a line or head)
+#   anything else a glyph copied from the base font, optionally squeezed
+#                 towards its neighbours so that sequences like '##' or '**'
+#                 read as one unit
+# --------------------------------------------------------------------------
+ARROW_SEQS = (
+    "->> <<- -< -<< >- >>- <-< >-> <-| |-> |- -| |-- --| <--| |--> <--> <--- ---> "
+    ">>= <<= =<< =>> >=> <=< <==> ===> <=== ==== <=| |=> |= ||= "
+    "<<< >>> <> <$> <$ $> <*> <* *> <+> <+ +> <: :> <:< >:> </> </ /> "
+    "~> ~~> <~ <~~ <~> ~~ ~~~ ~= =~ -~ ~- !~ "
+    "|> <| <|> ||> <|| |||> <||| "
+    ":= =: ::= =:= ?= ^= += -= *= %= &= .= "
+    "<!-- <!--- "
+).split()
+
+GLYPH_SEQS = (
+    "&& &&& || ||| :: ::: .. ... ;; ;;; ## ### #### ** *** ++ +++ ?? ??? !! !!! %% ^^ "
+    "\\\\ \\\\\\ __ // /// /* */ /** **/ #( #{ #[ #_ #_( #? #! #: {| |} [| |] "
+    "..< ..= !!. ?. ?: .? .- !. -- --- "
+).split()
+
+
+def build_more_ligatures(metrics, gs, cmap, existing):
+    t = metrics["t"]
+    hy = metrics["hy"]
+    eq_lo, eq_hi = metrics["eq_lo"], metrics["eq_hi"]
+    yb, yt = eq_lo + t / 2.0, eq_hi - t / 2.0
+    ym = (yb + yt) / 2.0
+    head = 150 + (t - 73) * 0.6
+    m = 62
+    out = {}
+
+    def new(seq):
+        s = Shape()
+        out[seq] = ("lig_" + "_".join("%04X" % ord(c) for c in seq), s, CELL * len(seq))
+        return s
+
+    # ---- hand drawn: equals-sign comparisons that need a diagonal stroke ----
+    def slashed_equals(seq, bars3):
+        s = new(seq)
+        W = CELL * len(seq)
+        t3 = t * 0.8
+        ys = [(eq_lo + t3 / 2, t3), (ym, t3), (eq_hi - t3 / 2, t3)] if bars3 else [(yb, t), (yt, t)]
+        for y, w in ys:
+            s.capsule((m - 20, y), (W - m + 20, y), w)
+        s.capsule((W / 2 - 62, eq_lo - 78), (W / 2 + 62, eq_hi + 78), t * 0.95)
+
+    for seq, b3 in (("=/=", False), ("=!=", False), ("/==", True), ("==/", True), ("=!==", True)):
+        if seq not in existing:
+            slashed_equals(seq, b3)
+
+    # ---- the little language -------------------------------------------------
+    def glyph(s, ch, dx):
+        s.glyph_outline(gs, cmap[ord(ch)], 1.0, 1.0, dx, 0)
+
+    def draw(seq):
+        n, W = len(seq), CELL * len(seq)
+        s = new(seq)
+        has_head = any(c in "<>" for c in seq)
+        has_line = any(c in "=~" for c in seq) or (
+            "-" in seq and (has_head or "|" in seq or seq.count("-") >= 2))
+        kind = []
+        for c in seq:
+            if c in "<>":
+                kind.append("head")
+            elif c == "=" or c == "~":
+                kind.append(c)
+            elif c == "-" and has_line:
+                kind.append("-")
+            elif c == "|" and (has_head or has_line):
+                kind.append("bar")
+            else:
+                kind.append("glyph")
+        is_line = lambda k: k in ("-", "=", "~")
+        line_attached = any(is_line(k) for k in kind)
+        eq_head = "=" in seq
+        hd = head + 25 if eq_head else head
+        hv = head + 45 if eq_head else head
+        if not line_attached:
+            hd, hv = 175, 175
+        margin = m if line_attached else 30
+        step = 0.8 * hd
+
+        # ---- group arrow heads into runs and decide where their tips go ------
+        chevrons = []       # (tip_x, direction)  direction +1 opens left ('>' shape)
+        tip_adj = {}        # head index next to a line -> tip x the line connects to
+        shorten = {}        # head index -> True when the line must stop short of the tip
+        i = 0
+        while i < n:
+            if kind[i] != "head":
+                i += 1
+                continue
+            j = i
+            while j < n and seq[j] == seq[i]:
+                j += 1
+            c, k = seq[i], j - i
+            line_right = j < n and is_line(kind[j])
+            line_left = i > 0 and is_line(kind[i - 1])
+            if i == 0 and line_right:
+                if c == "<":                                   # arrow head, left end
+                    tips = [margin + q * step for q in range(k)]
+                    chevrons += [(x, -1) for x in tips]
+                    shorten[j - 1] = True
+                else:                                          # tail fork, left end
+                    t0 = j * CELL - margin
+                    chevrons += [(t0 - q * step, 1) for q in range(k)]
+                tip_adj[j - 1] = tips[0] if c == "<" else t0
+            elif j == n and line_left:
+                if c == ">":                                   # arrow head, right end
+                    tips = [W - margin - q * step for q in range(k)]
+                    chevrons += [(x, 1) for x in tips]
+                    shorten[i] = True
+                else:                                          # tail fork, right end
+                    t0 = i * CELL + margin
+                    chevrons += [(t0 + q * step, -1) for q in range(k)]
+                tip_adj[i] = tips[0] if c == ">" else t0
+            else:                                              # standalone chevrons
+                for q in range(i, j):
+                    if c == ">":
+                        chevrons.append(((q + 1) * CELL - margin, 1))
+                    else:
+                        chevrons.append((q * CELL + margin, -1))
+            i = j
+
+        # ---- lines -------------------------------------------------------------
+        i = 0
+        while i < n:
+            if is_line(kind[i]):
+                j = i
+                while j < n and kind[j] == kind[i]:
+                    j += 1
+                k = kind[i]
+                x0, x1 = i * CELL + m, j * CELL - m
+                if i > 0 and kind[i - 1] == "head":
+                    x0 = tip_adj[i - 1]
+                    if k == "=" and shorten.get(i - 1):
+                        x0 += hd * 0.6
+                elif i > 0 and kind[i - 1] == "bar":
+                    x0 = (i - 1) * CELL + CELL / 2.0
+                elif i > 0:
+                    x0 = i * CELL + 40
+                if j < n and kind[j] == "head":
+                    x1 = tip_adj[j]
+                    if k == "=" and shorten.get(j):
+                        x1 -= hd * 0.6
+                elif j < n and kind[j] == "bar":
+                    x1 = j * CELL + CELL / 2.0
+                elif j < n:
+                    x1 = j * CELL - 40
+                if k == "=":
+                    s.capsule((x0, yb), (x1, yb), t)
+                    s.capsule((x0, yt), (x1, yt), t)
+                elif k == "-":
+                    s.capsule((x0, hy), (x1, hy), t)
+                else:
+                    pts, x = [], x0
+                    while x < x1:
+                        pts.append((x, hy + 48 * math.sin(2 * math.pi * (x - x0) / CELL)))
+                        x += 20
+                    pts.append((x1, hy + 48 * math.sin(2 * math.pi * (x1 - x0) / CELL)))
+                    s.polyline(pts, t)
+                i = j
+            else:
+                i += 1
+
+        # ---- heads, bars, glyphs -------------------------------------------------
+        yc = ym if eq_head else hy
+        for x, d in chevrons:
+            s.chevron((x, yc), d * hd, hv, t)
+        all_glyph = all(k == "glyph" for k in kind)
+        sq = 40
+        for i, c in enumerate(seq):
+            if kind[i] == "bar":
+                x = i * CELL + CELL / 2.0
+                s.capsule((x, -60), (x, 780), t)
+            elif kind[i] == "glyph":
+                shift = (n - 1) / 2.0 - i
+                glyph(s, c, i * CELL + (shift * sq if all_glyph else 0))
+
+    for seq in ARROW_SEQS + GLYPH_SEQS:
+        if seq not in existing and seq not in out and all(ord(c) in cmap for c in seq):
+            draw(seq)
+    return out
+
+
+# --------------------------------------------------------------------------
 # powerline + icons (all width 500)
 # --------------------------------------------------------------------------
 def build_powerline(t):
@@ -563,6 +752,7 @@ def build(src_path, style, out_dir):
     # --- new glyphs ----------------------------------------------------------
     t = metrics["t"]
     ligs = build_ligatures(metrics)
+    ligs.update(build_more_ligatures(metrics, gs, cmap, set(ligs)))
     for seq, (gname, shape, width) in ligs.items():
         charstrings[gname] = shape.to_charstring(width)
         advance[gname], lsb[gname] = width, shape.xmin()

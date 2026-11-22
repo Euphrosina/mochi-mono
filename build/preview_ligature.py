@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Render ligature / icon preview images for Mochi Mono Ligature (needs Playwright + Chromium)."""
+import html
 import os
 
 from playwright.sync_api import sync_playwright
@@ -16,16 +17,16 @@ body{margin:0;background:#fff5f8;font-family:ML;color:#52344a}
 .mute{color:#aa8296}.pink{color:#ec78a0}.b{font-weight:700}
 """ % (FONTS, FONTS)
 
-LIG = "-> --> <- <-- <-> => ==> <== <=> == === != !== /= >= <= >> << -- ---"
+LIG = "-> --> <-> => ==> <=> >= <= >>= <|> |> ~> <~> </> /* */ ## :: && ||"
 HTML = {
     "ligatures": """<div class="card" style="font-size:44px">
 <span class="mute" style="font-size:26px">Ligatures (Regular / Bold)</span>
 %s
 <span class="b">%s</span>
 <span class="mute" style="font-size:26px">In code</span>
-<span style="font-size:42px">if a != b and x >= 3 and y <= 9:
+<span style="font-size:40px">if a != b and x >= 3 and y <= 9:  // 注释
     f = lambda v => v == 0 ? v : v -> v
-    for i in range(10): print(i, "你好", 繁體字)</span></div>""" % (LIG, LIG),
+    xs |> map(f) &amp;&amp; ys &lt;|&gt; zs  /* 繁體字 */</span></div>""" % (html.escape(LIG), html.escape(LIG)),
     "icons": """<div class="card" style="font-size:64px">
 <span class="mute" style="font-size:26px">Powerline</span>
 &#xE0B0;&#xE0B1;&#xE0B2;&#xE0B3;&#xE0B4;&#xE0B5;&#xE0B6;&#xE0B7;&#xE0B8;&#xE0B9;&#xE0BA;&#xE0BB;&#xE0BC;&#xE0BD;&#xE0BE;&#xE0BF;
