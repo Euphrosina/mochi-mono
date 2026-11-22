@@ -32,7 +32,7 @@ def banner():
     d = ImageDraw.Draw(im)
     rounded_card(d, (40, 40, W - 40, H - 40), r=48)
     d.text((100, 80), "Mochi Mono", font=font(BOLD, 150), fill=PINK)
-    d.text((100, 270), "圆润软萌的等宽字体  ♥  適合寫程式與日常閱讀", font=font(REG, 56), fill=INK)
+    d.text((100, 270), "圆润软萌的等宽字体 · 適合寫程式與日常閱讀", font=font(REG, 56), fill=INK)
     d.text((100, 360), "简体 · 繁體 · English · 0123456789 · あいうえお", font=font(REG, 56), fill=INK)
     d.text((100, 470), "永字八法 愛戀龍鳳 你好世界!", font=font(BOLD, 96), fill=INK)
     d.text((100, 610), "Regular   +   Bold      SIL OFL 1.1", font=font(REG, 40), fill=MUTE)
@@ -45,7 +45,7 @@ def code():
     d = ImageDraw.Draw(im)
     rounded_card(d, (40, 40, W - 40, H - 40), r=40)
     lines = [
-        ("# 一起写代码吧 ♥", MUTE),
+        ("# 一起写代码吧", MUTE),
         ("def greet(name: str) -> str:", INK),
         ('    """给可爱的人打招呼"""', MUTE),
         ('    msg = f"你好, {name}! 今天也要加油~"', INK),
